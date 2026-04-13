@@ -1297,12 +1297,24 @@
             }
         </script>
 
-        <!-- Add this button panel at bottom right -->
-        <div class="fixed bottom-6 right-6 z-50 flex flex-col gap-3">
+        <!-- Add this button floating at bottom right -->
+        <div class="fixed bottom-6 right-6 z-50 flex gap-3">
             <button
-                onclick="recordCurrentCard()"
-                class="bg-gradient-to-r from-purple-500 to-pink-500 rounded-full p-3 shadow-lg hover:from-purple-600 hover:to-pink-600 transition-all group"
-                title="Record Current Card"
+                onclick="downloadCurrentCard()"
+                class="bg-white/80 backdrop-blur-md rounded-full p-3 shadow-lg border border-neutral-200 hover:bg-white transition-all"
+                title="Download Current Card"
+            >
+                <iconify-icon
+                    icon="solar:camera-minimalistic-linear"
+                    width="20"
+                    stroke-width="1.5"
+                    class="text-neutral-800"
+                ></iconify-icon>
+            </button>
+            <button
+                onclick="recordReel()"
+                class="bg-neutral-900 rounded-full p-3 shadow-lg hover:bg-neutral-800 transition-all"
+                title="Record All Cards as Reel"
             >
                 <iconify-icon
                     icon="solar:video-record-linear"
@@ -1310,549 +1322,205 @@
                     stroke-width="1.5"
                     class="text-white"
                 ></iconify-icon>
-                <span
-                    class="absolute -top-1 -right-1 w-3 h-3 bg-green-500 rounded-full"
-                ></span>
-            </button>
-
-            <button
-                onclick="recordAllCards()"
-                class="bg-gradient-to-r from-blue-500 to-cyan-500 rounded-full p-3 shadow-lg hover:from-blue-600 hover:to-cyan-600 transition-all group"
-                title="Record All Cards"
-            >
-                <iconify-icon
-                    icon="solar:playlist-minimalistic-linear"
-                    width="20"
-                    stroke-width="1.5"
-                    class="text-white"
-                ></iconify-icon>
-                <span
-                    class="absolute -top-1 -right-1 w-4 h-4 bg-yellow-400 rounded-full text-[9px] text-black flex items-center justify-center font-bold"
-                    >8</span
-                >
-            </button>
-
-            <button
-                onclick="recordStatsStates()"
-                class="bg-gradient-to-r from-orange-500 to-red-500 rounded-full p-3 shadow-lg hover:from-orange-600 hover:to-red-600 transition-all group"
-                title="Record Stats Card 3 States"
-            >
-                <iconify-icon
-                    icon="solar:chart-2-linear"
-                    width="20"
-                    stroke-width="1.5"
-                    class="text-white"
-                ></iconify-icon>
-                <span
-                    class="absolute -top-1 -right-1 w-3 h-3 bg-purple-500 rounded-full text-[8px] text-white flex items-center justify-center"
-                    >3</span
-                >
             </button>
         </div>
 
-        <!-- Recording indicator -->
-        <div
-            id="recordIndicator"
-            class="fixed top-4 left-1/2 -translate-x-1/2 bg-red-500 text-white px-4 py-2 rounded-full text-sm z-50 font-mono shadow-lg hidden items-center gap-2"
-        >
-            <div class="w-3 h-3 bg-white rounded-full animate-pulse"></div>
-            <span id="recordIndicatorText">Recording...</span>
-            <span id="recordTimer" class="ml-2">0:00</span>
-        </div>
-
+        <script src="https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js"></script>
         <script>
-            let isRecording = false;
-            let mediaRecorder = null;
-            let recordedChunks = [];
-            let recordingStream = null;
-            let timerInterval = null;
-            let recordingStartTime = null;
-
-            function showRecording(text) {
-                const indicator = document.getElementById("recordIndicator");
-                const textSpan = document.getElementById("recordIndicatorText");
-                textSpan.innerText = text;
-                indicator.classList.remove("hidden");
-
-                // Start timer
-                recordingStartTime = Date.now();
-                if (timerInterval) clearInterval(timerInterval);
-                timerInterval = setInterval(updateTimer, 1000);
-            }
-
-            function updateTimer() {
-                const elapsed = Math.floor(
-                    (Date.now() - recordingStartTime) / 1000,
-                );
-                const minutes = Math.floor(elapsed / 60);
-                const seconds = elapsed % 60;
-                const timerSpan = document.getElementById("recordTimer");
-                timerSpan.textContent = `${minutes}:${seconds.toString().padStart(2, "0")}`;
-            }
-
-            function hideRecording() {
-                document
-                    .getElementById("recordIndicator")
-                    .classList.add("hidden");
-                if (timerInterval) clearInterval(timerInterval);
-            }
-
-            // Record current visible card using Screen Capture API
-            async function recordCurrentCard() {
-                if (isRecording) {
-                    alert("Already recording! Please wait.");
-                    return;
-                }
-
-                isRecording = true;
-
-                // Get current slide
+            // Function to download current visible slide as PNG
+            async function downloadCurrentCard() {
                 const currentSlide = document.querySelector(".snap-center");
-                if (!currentSlide) {
-                    isRecording = false;
-                    return;
-                }
+                if (!currentSlide) return;
 
-                // Scroll to make sure card is fully visible
-                currentSlide.scrollIntoView({
-                    behavior: "smooth",
-                    block: "center",
-                });
-                await new Promise((r) => setTimeout(r, 500));
-
-                // Hide recording buttons temporarily
+                // Temporarily hide floating buttons for clean capture
                 const buttons = document.querySelector(".fixed.bottom-6");
-                if (buttons) buttons.style.opacity = "0";
-
-                // Get card info
-                const slides = document.querySelectorAll(".snap-center");
-                const cardIndex =
-                    Array.from(slides).findIndex(
-                        (slide) => slide === currentSlide,
-                    ) + 1;
+                if (buttons) buttons.style.display = "none";
 
                 try {
-                    // Request screen capture
-                    recordingStream =
-                        await navigator.mediaDevices.getDisplayMedia({
-                            video: {
-                                displaySurface: "browser",
-                                logicalSurface: true,
-                                width: { ideal: 1920 },
-                                height: { ideal: 1080 },
-                            },
-                            audio: false,
-                            preferCurrentTab: true,
-                        });
-
-                    // Set up recorder
-                    mediaRecorder = new MediaRecorder(recordingStream, {
-                        mimeType: "video/webm",
-                        videoBitsPerSecond: 10000000, // 10 Mbps for high quality
+                    const canvas = await html2canvas(currentSlide, {
+                        scale: 2,
+                        backgroundColor: "#EAEAEA",
+                        logging: false,
+                        useCORS: true,
                     });
 
-                    recordedChunks = [];
-                    mediaRecorder.ondataavailable = (event) => {
-                        if (event.data.size > 0) {
-                            recordedChunks.push(event.data);
-                        }
-                    };
-
-                    mediaRecorder.onstop = async () => {
-                        const blob = new Blob(recordedChunks, {
-                            type: "video/webm",
-                        });
-                        const url = URL.createObjectURL(blob);
-                        const a = document.createElement("a");
-                        a.href = url;
-                        a.download = `mooyvx-card-${cardIndex}-${Date.now()}.webm`;
-                        a.click();
-                        setTimeout(() => URL.revokeObjectURL(url), 100);
-
-                        // Stop all tracks
-                        if (recordingStream) {
-                            recordingStream
-                                .getTracks()
-                                .forEach((track) => track.stop());
-                        }
-
-                        // Restore buttons
-                        if (buttons) buttons.style.opacity = "1";
-                        hideRecording();
-                        isRecording = false;
-                    };
-
-                    // Start recording (record for 5 seconds)
-                    mediaRecorder.start();
-                    showRecording(`Recording Card ${cardIndex}...`);
-
-                    setTimeout(() => {
-                        if (
-                            mediaRecorder &&
-                            mediaRecorder.state === "recording"
-                        ) {
-                            mediaRecorder.stop();
-                        }
-                    }, 5000);
+                    const link = document.createElement("a");
+                    link.download = `mooyvx-card-${Date.now()}.png`;
+                    link.href = canvas.toDataURL();
+                    link.click();
                 } catch (err) {
-                    console.error("Recording failed:", err);
-                    alert(
-                        "Please select the browser tab/window to record when prompted.",
-                    );
-                    if (buttons) buttons.style.opacity = "1";
-                    hideRecording();
-                    isRecording = false;
-                    if (recordingStream) {
-                        recordingStream
-                            .getTracks()
-                            .forEach((track) => track.stop());
-                    }
+                    console.error("Capture failed:", err);
+                    alert("Failed to capture. Try again.");
                 }
+
+                if (buttons) buttons.style.display = "flex";
             }
 
-            // Record all cards sequentially
-            async function recordAllCards() {
-                if (isRecording) {
-                    alert("Already recording! Please wait.");
-                    return;
-                }
-
-                isRecording = true;
-
+            // Function to record all slides as a video reel
+            async function recordReel() {
                 const slides = document.querySelectorAll(".snap-center");
-                const totalCards = slides.length;
+                const totalSlides = slides.length;
 
-                // Hide buttons
-                const buttons = document.querySelector(".fixed.bottom-6");
-                if (buttons) buttons.style.opacity = "0";
+                // Show recording UI
+                const btn = event.target.closest("button");
+                const originalHTML = btn.innerHTML;
+                btn.innerHTML =
+                    '<iconify-icon icon="svg-spinners:3-dots-fade" width="20" stroke-width="1.5" class="text-white"></iconify-icon>';
+                btn.disabled = true;
 
-                // Store original scroll and auto-rotation
+                // Create progress indicator
+                const progressDiv = document.createElement("div");
+                progressDiv.className =
+                    "fixed top-20 left-1/2 -translate-x-1/2 bg-neutral-900 text-white px-4 py-2 rounded-full text-sm z-50 font-mono shadow-lg";
+                progressDiv.innerHTML = `Recording reel... 0/${totalSlides}`;
+                document.body.appendChild(progressDiv);
+
+                const capturedImages = [];
+
+                // Store original scroll behavior
                 const originalOverflow = document.body.style.overflow;
                 document.body.style.overflow = "hidden";
 
-                let originalInterval = window.autoRotateInterval;
-                if (originalInterval) clearInterval(originalInterval);
+                // Capture each slide one by one
+                for (let i = 0; i < totalSlides; i++) {
+                    progressDiv.innerHTML = `Recording reel... ${i + 1}/${totalSlides}`;
 
-                try {
-                    // Request screen capture once for all cards
-                    recordingStream =
-                        await navigator.mediaDevices.getDisplayMedia({
-                            video: {
-                                displaySurface: "browser",
-                                logicalSurface: true,
-                                width: { ideal: 1920 },
-                                height: { ideal: 1080 },
-                            },
-                            audio: false,
-                            preferCurrentTab: true,
-                        });
-
-                    mediaRecorder = new MediaRecorder(recordingStream, {
-                        mimeType: "video/webm",
-                        videoBitsPerSecond: 10000000,
+                    // Scroll to slide
+                    slides[i].scrollIntoView({
+                        behavior: "instant",
+                        block: "start",
                     });
+                    await new Promise((r) => setTimeout(r, 100));
 
-                    recordedChunks = [];
-                    mediaRecorder.ondataavailable = (event) => {
-                        if (event.data.size > 0) {
-                            recordedChunks.push(event.data);
-                        }
-                    };
+                    // Hide floating buttons temporarily
+                    const buttons = document.querySelector(".fixed.bottom-6");
+                    if (buttons) buttons.style.display = "none";
 
-                    let currentCard = 0;
-
-                    mediaRecorder.onstop = async () => {
-                        const blob = new Blob(recordedChunks, {
-                            type: "video/webm",
+                    try {
+                        const canvas = await html2canvas(slides[i], {
+                            scale: 1.5,
+                            backgroundColor: "#EAEAEA",
+                            logging: false,
+                            useCORS: true,
                         });
-                        const url = URL.createObjectURL(blob);
-                        const a = document.createElement("a");
-                        a.href = url;
-                        a.download = `mooyvx-all-cards-${Date.now()}.webm`;
-                        a.click();
-                        setTimeout(() => URL.revokeObjectURL(url), 100);
-
-                        if (recordingStream) {
-                            recordingStream
-                                .getTracks()
-                                .forEach((track) => track.stop());
-                        }
-
-                        // Restore everything
-                        document.body.style.overflow = originalOverflow;
-                        if (originalInterval && window.startAutoRotate) {
-                            window.startAutoRotate();
-                        }
-                        if (buttons) buttons.style.opacity = "1";
-                        hideRecording();
-                        isRecording = false;
-                    };
-
-                    // Start recording
-                    mediaRecorder.start();
-                    showRecording(`Recording Card 1/${totalCards}...`);
-
-                    // Function to cycle through cards
-                    const recordNextCard = async () => {
-                        if (currentCard >= totalCards) {
-                            // Stop recording when done
-                            if (
-                                mediaRecorder &&
-                                mediaRecorder.state === "recording"
-                            ) {
-                                mediaRecorder.stop();
-                            }
-                            return;
-                        }
-
-                        // Scroll to card
-                        slides[currentCard].scrollIntoView({
-                            behavior: "smooth",
-                            block: "center",
-                        });
-                        await new Promise((r) => setTimeout(r, 500));
-
-                        showRecording(
-                            `Recording Card ${currentCard + 1}/${totalCards}...`,
-                        );
-
-                        currentCard++;
-
-                        // Move to next card after 4 seconds
-                        setTimeout(recordNextCard, 4000);
-                    };
-
-                    // Start recording cards
-                    recordNextCard();
-                } catch (err) {
-                    console.error("Recording failed:", err);
-                    alert(
-                        "Please select the browser tab/window to record when prompted.",
-                    );
-                    if (buttons) buttons.style.opacity = "1";
-                    hideRecording();
-                    isRecording = false;
-                    if (recordingStream) {
-                        recordingStream
-                            .getTracks()
-                            .forEach((track) => track.stop());
+                        capturedImages.push(canvas);
+                    } catch (err) {
+                        console.error(`Failed to capture slide ${i}:`, err);
                     }
+
+                    if (buttons) buttons.style.display = "flex";
+                    await new Promise((r) => setTimeout(r, 50));
                 }
+
+                // Clean up
+                document.body.style.overflow = originalOverflow;
+                progressDiv.remove();
+
+                if (capturedImages.length === 0) {
+                    alert("Failed to capture any slides.");
+                    btn.innerHTML = originalHTML;
+                    btn.disabled = false;
+                    return;
+                }
+
+                // Create video from captured images
+                progressDiv.innerHTML = "Creating video reel...";
+
+                const videoStream = await createVideoFromImages(capturedImages);
+
+                // Download the video
+                const videoUrl = URL.createObjectURL(videoStream);
+                const downloadLink = document.createElement("a");
+                downloadLink.download = `mooyvx-reel-${Date.now()}.webm`;
+                downloadLink.href = videoUrl;
+                downloadLink.click();
+
+                setTimeout(() => {
+                    URL.revokeObjectURL(videoUrl);
+                }, 1000);
+
+                progressDiv.remove();
+                btn.innerHTML = originalHTML;
+                btn.disabled = false;
             }
 
-            // Record stats card showing all 3 states
-            async function recordStatsStates() {
-                if (isRecording) {
-                    alert("Already recording! Please wait.");
-                    return;
-                }
+            // Helper: Create video from array of canvases
+            async function createVideoFromImages(canvases) {
+                const width = canvases[0].width;
+                const height = canvases[0].height;
+                const fps = 1; // 1 second per slide (adjustable)
+                const secondsPerSlide = 1.5;
+                const frameRate = 30;
+                const framesPerSlide = Math.floor(frameRate * secondsPerSlide);
 
-                isRecording = true;
+                // Create canvas for drawing frames
+                const offscreenCanvas = document.createElement("canvas");
+                offscreenCanvas.width = width;
+                offscreenCanvas.height = height;
+                const ctx = offscreenCanvas.getContext("2d");
 
-                const statsSlide = document.querySelectorAll(".snap-center")[1];
-                if (!statsSlide) {
-                    isRecording = false;
-                    alert("Stats card not found!");
-                    return;
-                }
-
-                // Hide buttons
-                const buttons = document.querySelector(".fixed.bottom-6");
-                if (buttons) buttons.style.opacity = "0";
-
-                // Stop auto-rotation
-                let originalInterval = window.autoRotateInterval;
-                if (originalInterval) clearInterval(originalInterval);
-
-                // Scroll to stats card
-                statsSlide.scrollIntoView({
-                    behavior: "smooth",
-                    block: "center",
+                // Set up MediaRecorder
+                const stream = offscreenCanvas.captureStream(frameRate);
+                const recorder = new MediaRecorder(stream, {
+                    mimeType: "video/webm",
+                    videoBitsPerSecond: 5000000,
                 });
-                await new Promise((r) => setTimeout(r, 500));
 
-                const cards = statsSlide.querySelectorAll(".rotate-card");
-                const stateNames = [
-                    "5.17 Billion",
-                    "200 Million",
-                    "50 Million",
-                ];
+                const chunks = [];
+                recorder.ondataavailable = (e) => {
+                    if (e.data.size > 0) chunks.push(e.data);
+                };
 
-                try {
-                    // Request screen capture
-                    recordingStream =
-                        await navigator.mediaDevices.getDisplayMedia({
-                            video: {
-                                displaySurface: "browser",
-                                logicalSurface: true,
-                                width: { ideal: 1920 },
-                                height: { ideal: 1080 },
-                            },
-                            audio: false,
-                            preferCurrentTab: true,
-                        });
+                recorder.start();
 
-                    mediaRecorder = new MediaRecorder(recordingStream, {
-                        mimeType: "video/webm",
-                        videoBitsPerSecond: 10000000,
-                    });
+                // Generate frames for each slide
+                for (let slideIdx = 0; slideIdx < canvases.length; slideIdx++) {
+                    const canvas = canvases[slideIdx];
 
-                    recordedChunks = [];
-                    mediaRecorder.ondataavailable = (event) => {
-                        if (event.data.size > 0) {
-                            recordedChunks.push(event.data);
-                        }
-                    };
+                    for (let frame = 0; frame < framesPerSlide; frame++) {
+                        // Clear and draw current slide
+                        ctx.clearRect(0, 0, width, height);
+                        ctx.drawImage(canvas, 0, 0, width, height);
 
-                    let currentState = 0;
-
-                    mediaRecorder.onstop = async () => {
-                        const blob = new Blob(recordedChunks, {
-                            type: "video/webm",
-                        });
-                        const url = URL.createObjectURL(blob);
-                        const a = document.createElement("a");
-                        a.href = url;
-                        a.download = `mooyvx-stats-all-states-${Date.now()}.webm`;
-                        a.click();
-                        setTimeout(() => URL.revokeObjectURL(url), 100);
-
-                        if (recordingStream) {
-                            recordingStream
-                                .getTracks()
-                                .forEach((track) => track.stop());
+                        // Add subtle fade transition between slides
+                        if (frame < 15 && slideIdx > 0) {
+                            // Fade in transition
+                            ctx.globalAlpha = frame / 15;
+                            ctx.drawImage(
+                                canvases[slideIdx - 1],
+                                0,
+                                0,
+                                width,
+                                height,
+                            );
+                            ctx.globalAlpha = 1;
                         }
 
-                        // Reset to first state
-                        cards.forEach((card, idx) => {
-                            if (idx === 0) {
-                                card.classList.remove(
-                                    "opacity-0",
-                                    "scale-95",
-                                    "z-0",
-                                    "pointer-events-none",
-                                );
-                                card.classList.add(
-                                    "opacity-100",
-                                    "scale-100",
-                                    "z-10",
-                                );
-                            } else {
-                                card.classList.remove(
-                                    "opacity-100",
-                                    "scale-100",
-                                    "z-10",
-                                );
-                                card.classList.add(
-                                    "opacity-0",
-                                    "scale-95",
-                                    "z-0",
-                                    "pointer-events-none",
-                                );
-                            }
-                        });
-
-                        const dots = statsSlide.querySelectorAll(".rotate-dot");
-                        dots.forEach((dot, idx) => {
-                            if (idx === 0) {
-                                dot.classList.remove("bg-neutral-300");
-                                dot.classList.add("bg-neutral-900");
-                            } else {
-                                dot.classList.remove("bg-neutral-900");
-                                dot.classList.add("bg-neutral-300");
-                            }
-                        });
-
-                        // Restore auto-rotation
-                        if (originalInterval && window.startAutoRotate) {
-                            window.startAutoRotate();
-                        }
-                        if (buttons) buttons.style.opacity = "1";
-                        hideRecording();
-                        isRecording = false;
-                    };
-
-                    // Start recording
-                    mediaRecorder.start();
-
-                    const showNextState = async () => {
-                        if (currentState >= cards.length) {
-                            // Stop recording after showing all states
-                            setTimeout(() => {
-                                if (
-                                    mediaRecorder &&
-                                    mediaRecorder.state === "recording"
-                                ) {
-                                    mediaRecorder.stop();
-                                }
-                            }, 1000);
-                            return;
-                        }
-
-                        // Show current state
-                        cards.forEach((card, idx) => {
-                            if (idx === currentState) {
-                                card.classList.remove(
-                                    "opacity-0",
-                                    "scale-95",
-                                    "z-0",
-                                    "pointer-events-none",
-                                );
-                                card.classList.add(
-                                    "opacity-100",
-                                    "scale-100",
-                                    "z-10",
-                                );
-                            } else {
-                                card.classList.remove(
-                                    "opacity-100",
-                                    "scale-100",
-                                    "z-10",
-                                );
-                                card.classList.add(
-                                    "opacity-0",
-                                    "scale-95",
-                                    "z-0",
-                                    "pointer-events-none",
-                                );
-                            }
-                        });
-
-                        // Update dots
-                        const dots = statsSlide.querySelectorAll(".rotate-dot");
-                        dots.forEach((dot, idx) => {
-                            if (idx === currentState) {
-                                dot.classList.remove("bg-neutral-300");
-                                dot.classList.add("bg-neutral-900");
-                            } else {
-                                dot.classList.remove("bg-neutral-900");
-                                dot.classList.add("bg-neutral-300");
-                            }
-                        });
-
-                        showRecording(`Showing: ${stateNames[currentState]}`);
-
-                        currentState++;
-
-                        // Show each state for 3 seconds
-                        setTimeout(showNextState, 3000);
-                    };
-
-                    showNextState();
-                } catch (err) {
-                    console.error("Recording failed:", err);
-                    alert(
-                        "Please select the browser tab/window to record when prompted.",
-                    );
-                    if (buttons) buttons.style.opacity = "1";
-                    hideRecording();
-                    isRecording = false;
-                    if (recordingStream) {
-                        recordingStream
-                            .getTracks()
-                            .forEach((track) => track.stop());
+                        await new Promise((r) => requestAnimationFrame(r));
                     }
                 }
+
+                // Add ending frame
+                for (let frame = 0; frame < frameRate; frame++) {
+                    ctx.drawImage(
+                        canvases[canvases.length - 1],
+                        0,
+                        0,
+                        width,
+                        height,
+                    );
+                    await new Promise((r) => requestAnimationFrame(r));
+                }
+
+                // Stop recording
+                recorder.stop();
+
+                return new Promise((resolve) => {
+                    recorder.onstop = () => {
+                        const blob = new Blob(chunks, { type: "video/webm" });
+                        resolve(blob);
+                    };
+                });
             }
         </script>
     </body>
