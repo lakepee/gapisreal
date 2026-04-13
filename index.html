@@ -1298,27 +1298,29 @@
         </script>
 
         <!-- Add this button panel at bottom right -->
-        <div class="fixed bottom-6 right-6 z-50 flex flex-col gap-3">
+        <div
+            id="recordingButtons"
+            class="fixed bottom-6 right-6 z-50 flex flex-col gap-3"
+        >
             <button
-                onclick="captureCardAsGIF()"
-                class="bg-gradient-to-r from-purple-500 to-pink-500 rounded-full p-3 shadow-lg hover:from-purple-600 hover:to-pink-600 transition-all group"
-                title="Capture Current Card as GIF"
+                onclick="captureAsVideo()"
+                class="bg-gradient-to-r from-purple-500 to-pink-500 rounded-full p-3 shadow-lg hover:shadow-xl transition-all group"
             >
                 <iconify-icon
-                    icon="solar:gif-square-linear"
+                    icon="solar:video-record-linear"
                     width="20"
                     stroke-width="1.5"
                     class="text-white"
                 ></iconify-icon>
                 <span
-                    class="absolute -top-1 -right-1 w-3 h-3 bg-green-500 rounded-full"
-                ></span>
+                    class="text-xs absolute -bottom-6 left-1/2 -translate-x-1/2 whitespace-nowrap text-purple-600 font-medium"
+                    >Record Card</span
+                >
             </button>
 
             <button
-                onclick="captureAllCardsAsGIFs()"
-                class="bg-gradient-to-r from-blue-500 to-cyan-500 rounded-full p-3 shadow-lg hover:from-blue-600 hover:to-cyan-600 transition-all group"
-                title="Capture All Cards as Separate GIFs"
+                onclick="captureAllCardsAsVideos()"
+                class="bg-gradient-to-r from-blue-500 to-cyan-500 rounded-full p-3 shadow-lg hover:shadow-xl transition-all group"
             >
                 <iconify-icon
                     icon="solar:playlist-minimalistic-linear"
@@ -1327,15 +1329,14 @@
                     class="text-white"
                 ></iconify-icon>
                 <span
-                    class="absolute -top-1 -right-1 w-4 h-4 bg-yellow-400 rounded-full text-[9px] text-black flex items-center justify-center font-bold"
-                    >8</span
+                    class="text-xs absolute -bottom-6 left-1/2 -translate-x-1/2 whitespace-nowrap text-blue-600 font-medium"
+                    >All Cards</span
                 >
             </button>
 
             <button
-                onclick="captureStatsCardStatesAsGIF()"
-                class="bg-gradient-to-r from-orange-500 to-red-500 rounded-full p-3 shadow-lg hover:from-orange-600 hover:to-red-600 transition-all group"
-                title="Capture Stats Card 3 States as GIF"
+                onclick="captureStatsStates()"
+                class="bg-gradient-to-r from-orange-500 to-red-500 rounded-full p-3 shadow-lg hover:shadow-xl transition-all group"
             >
                 <iconify-icon
                     icon="solar:chart-2-linear"
@@ -1344,348 +1345,423 @@
                     class="text-white"
                 ></iconify-icon>
                 <span
-                    class="absolute -top-1 -right-1 w-3 h-3 bg-purple-500 rounded-full text-[8px] text-white flex items-center justify-center"
-                    >3</span
+                    class="text-xs absolute -bottom-6 left-1/2 -translate-x-1/2 whitespace-nowrap text-orange-600 font-medium"
+                    >Stats States</span
                 >
             </button>
         </div>
 
-        <!-- Progress indicator -->
+        <!-- Progress Modal -->
         <div
-            id="gifProgress"
-            class="fixed top-20 left-1/2 -translate-x-1/2 bg-black/90 backdrop-blur-md text-white px-6 py-3 rounded-2xl text-sm z-50 font-mono shadow-2xl hidden items-center gap-3 border border-white/20"
+            id="captureModal"
+            class="fixed inset-0 bg-black/80 backdrop-blur-sm z-[100] hidden items-center justify-center"
         >
             <div
-                class="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin"
-            ></div>
-            <span id="gifProgressText">Generating GIF...</span>
+                class="bg-white rounded-2xl p-8 max-w-md w-full mx-4 text-center"
+            >
+                <div
+                    class="w-16 h-16 border-4 border-purple-200 border-t-purple-600 rounded-full animate-spin mx-auto mb-4"
+                ></div>
+                <h3
+                    class="text-xl font-semibold text-gray-900 mb-2"
+                    id="modalTitle"
+                >
+                    Processing
+                </h3>
+                <p class="text-gray-600 mb-4" id="modalMessage">
+                    Please wait...
+                </p>
+                <div
+                    class="w-full bg-gray-200 rounded-full h-2 overflow-hidden"
+                >
+                    <div
+                        id="modalProgress"
+                        class="bg-gradient-to-r from-purple-500 to-pink-500 h-2 rounded-full transition-all duration-300"
+                        style="width: 0%"
+                    ></div>
+                </div>
+                <button
+                    onclick="cancelCapture()"
+                    class="mt-4 text-sm text-gray-500 hover:text-gray-700"
+                >
+                    Cancel
+                </button>
+            </div>
         </div>
 
-        <!-- Load required libraries -->
-        <script src="https://cdn.jsdelivr.net/npm/gif.js@0.2.0/dist/gif.js"></script>
         <script src="https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js"></script>
 
         <script>
             let isCapturing = false;
+            let cancelCaptureFlag = false;
 
-            // Show progress
-            function showProgress(text) {
-                const progressDiv = document.getElementById("gifProgress");
-                const textSpan = document.getElementById("gifProgressText");
-                textSpan.innerText = text;
-                progressDiv.classList.remove("hidden");
+            function cancelCapture() {
+                cancelCaptureFlag = true;
             }
 
-            function hideProgress() {
-                document.getElementById("gifProgress").classList.add("hidden");
+            function hideButtons() {
+                const buttons = document.getElementById("recordingButtons");
+                if (buttons) buttons.style.display = "none";
             }
 
-            // High-quality GIF capture function
-            async function captureElementAsGIF(element, options = {}) {
-                const {
-                    duration = 4000, // GIF duration in ms
-                    fps = 30, // Frames per second (higher = smoother)
-                    width = null, // Auto-detect if null
-                    height = null, // Auto-detect if null
-                    quality = 10, // GIF quality (1-20, lower = better)
-                    backgroundColor = null, // Transparent background if null
-                } = options;
-
-                return new Promise(async (resolve, reject) => {
-                    try {
-                        // Find the actual card
-                        const cardElement =
-                            element.querySelector(".rounded-\\[2rem\\]") ||
-                            element;
-
-                        // Get dimensions
-                        const rect = cardElement.getBoundingClientRect();
-                        const targetWidth = width || rect.width;
-                        const targetHeight = height || rect.height;
-
-                        // Calculate total frames
-                        const totalFrames = Math.floor((duration / 1000) * fps);
-                        const frameInterval = duration / totalFrames;
-
-                        showProgress(`Capturing ${totalFrames} frames...`);
-
-                        // Create GIF encoder with high quality settings
-                        const gif = new GIF({
-                            workers: 2,
-                            quality: quality,
-                            width: targetWidth,
-                            height: targetHeight,
-                            workerScript:
-                                "https://cdn.jsdelivr.net/npm/gif.js@0.2.0/dist/gif.worker.js",
-                            background: backgroundColor || "#FFFFFF",
-                            transparent:
-                                backgroundColor === null ? "#FFFFFF" : null,
-                            dither: true,
-                        });
-
-                        // Capture frames over time
-                        let frames = [];
-                        let startTime = Date.now();
-
-                        // Clone card for isolated capture
-                        const tempContainer = document.createElement("div");
-                        tempContainer.style.position = "fixed";
-                        tempContainer.style.top = "-9999px";
-                        tempContainer.style.left = "-9999px";
-                        tempContainer.style.width = `${targetWidth}px`;
-                        tempContainer.style.height = `${targetHeight}px`;
-                        tempContainer.style.backgroundColor = "transparent";
-                        tempContainer.style.zIndex = "-1";
-
-                        const cardClone = cardElement.cloneNode(true);
-                        cardClone.style.width = `${targetWidth}px`;
-                        cardClone.style.height = `${targetHeight}px`;
-                        cardClone.style.margin = "0";
-                        cardClone.style.transform = "scale(1)";
-
-                        // Preserve animations
-                        cardClone.style.animationPlayState = "running";
-
-                        tempContainer.appendChild(cardClone);
-                        document.body.appendChild(tempContainer);
-
-                        // Wait for clone to render
-                        await new Promise((r) => setTimeout(r, 200));
-
-                        // Capture frames sequentially
-                        for (let i = 0; i < totalFrames; i++) {
-                            const progress = ((i + 1) / totalFrames) * 100;
-                            showProgress(
-                                `Capturing frame ${i + 1}/${totalFrames} (${Math.round(progress)}%)`,
-                            );
-
-                            // Capture current frame with html2canvas (high quality)
-                            const canvas = await html2canvas(cardClone, {
-                                scale: 2, // 2x resolution for crisp GIF
-                                backgroundColor: backgroundColor || "#FFFFFF",
-                                logging: false,
-                                useCORS: true,
-                                allowTaint: false,
-                                windowWidth: targetWidth,
-                                windowHeight: targetHeight,
-                                onclone: (clonedDoc, element) => {
-                                    // Ensure animations continue in clone
-                                    const animatedElements =
-                                        clonedDoc.querySelectorAll(
-                                            '[style*="animation"]',
-                                        );
-                                    animatedElements.forEach((el) => {
-                                        el.style.animationPlayState = "running";
-                                    });
-                                },
-                            });
-
-                            // Add frame to GIF
-                            gif.addFrame(canvas, {
-                                delay: Math.floor(frameInterval),
-                                copy: true,
-                            });
-
-                            // Small delay between frames to match animation timing
-                            await new Promise((r) =>
-                                setTimeout(r, frameInterval),
-                            );
-                        }
-
-                        // Clean up clone
-                        document.body.removeChild(tempContainer);
-
-                        showProgress("Rendering high-quality GIF...");
-
-                        // Render GIF
-                        gif.on("finished", function (blob) {
-                            hideProgress();
-                            resolve(blob);
-                        });
-
-                        gif.on("error", function (error) {
-                            console.error("GIF Error:", error);
-                            hideProgress();
-                            reject(error);
-                        });
-
-                        gif.render();
-                    } catch (error) {
-                        console.error("Capture error:", error);
-                        hideProgress();
-                        reject(error);
-                    }
-                });
+            function showButtons() {
+                const buttons = document.getElementById("recordingButtons");
+                if (buttons) buttons.style.display = "flex";
+                cancelCaptureFlag = false;
             }
 
-            // Capture current card as GIF
-            async function captureCardAsGIF() {
+            function showModal(title, message, progress = null) {
+                const modal = document.getElementById("captureModal");
+                document.getElementById("modalTitle").textContent = title;
+                document.getElementById("modalMessage").textContent = message;
+                if (progress !== null) {
+                    document.getElementById("modalProgress").style.width =
+                        `${progress}%`;
+                }
+                modal.classList.remove("hidden");
+                modal.classList.add("flex");
+            }
+
+            function hideModal() {
+                const modal = document.getElementById("captureModal");
+                modal.classList.remove("flex");
+                modal.classList.add("hidden");
+                document.getElementById("modalProgress").style.width = "0%";
+            }
+
+            // Capture single card as video
+            async function captureAsVideo() {
                 if (isCapturing) {
                     alert("Already capturing! Please wait.");
                     return;
                 }
 
                 isCapturing = true;
+                cancelCaptureFlag = false;
+                hideButtons();
 
                 const currentSlide = document.querySelector(".snap-center");
-                if (!currentSlide) {
-                    isCapturing = false;
-                    return;
-                }
-
-                // Get card number for filename
-                const slides = document.querySelectorAll(".snap-center");
-                const cardIndex =
-                    Array.from(slides).findIndex(
-                        (slide) => slide === currentSlide,
-                    ) + 1;
-
-                // Temporarily hide UI elements
-                const buttons = document.querySelector(".fixed.bottom-6");
-                const noiseOverlay = document.querySelector(
-                    ".fixed.inset-0.pointer-events-none",
+                const cardContainer = currentSlide.querySelector(
+                    ".rounded-\\[2rem\\]",
                 );
-                if (buttons) buttons.style.opacity = "0";
-                if (noiseOverlay) noiseOverlay.style.opacity = "0";
+
+                // Get card dimensions
+                const rect = cardContainer.getBoundingClientRect();
+                const width = rect.width;
+                const height = rect.height;
+
+                showModal("Recording Video", "Preparing...", 0);
 
                 try {
-                    const gifBlob = await captureElementAsGIF(currentSlide, {
-                        duration: 5000, // 5 seconds per card
-                        fps: 24, // 24 fps for smooth animation
-                        quality: 8, // High quality
-                        backgroundColor: "#EAEAEA", // Match page background
+                    // Create canvas for recording
+                    const canvas = document.createElement("canvas");
+                    canvas.width = width * 2; // 2x for high quality
+                    canvas.height = height * 2;
+                    const ctx = canvas.getContext("2d");
+
+                    // Clone card for clean capture
+                    const cloneContainer = document.createElement("div");
+                    cloneContainer.style.position = "fixed";
+                    cloneContainer.style.top = "-9999px";
+                    cloneContainer.style.left = "-9999px";
+                    cloneContainer.style.width = `${width}px`;
+                    cloneContainer.style.height = `${height}px`;
+
+                    const cardClone = cardContainer.cloneNode(true);
+                    cardClone.style.width = `${width}px`;
+                    cardClone.style.height = `${height}px`;
+                    cardClone.style.margin = "0";
+                    cardClone.style.transform = "scale(1)";
+
+                    cloneContainer.appendChild(cardClone);
+                    document.body.appendChild(cloneContainer);
+
+                    await new Promise((r) => setTimeout(r, 200));
+
+                    // Create stream from canvas
+                    const stream = canvas.captureStream(30);
+                    const recorder = new MediaRecorder(stream, {
+                        mimeType: "video/webm",
+                        videoBitsPerSecond: 8000000, // 8 Mbps for good quality
                     });
 
-                    // Download GIF
-                    const url = URL.createObjectURL(gifBlob);
-                    const a = document.createElement("a");
-                    a.href = url;
-                    a.download = `mooyvx-card-${cardIndex}-${Date.now()}.gif`;
-                    a.click();
-                    setTimeout(() => URL.revokeObjectURL(url), 100);
+                    const chunks = [];
+                    recorder.ondataavailable = (e) => {
+                        if (e.data.size > 0) chunks.push(e.data);
+                    };
+
+                    // Create download when recording stops
+                    const stopPromise = new Promise((resolve) => {
+                        recorder.onstop = () => {
+                            const blob = new Blob(chunks, {
+                                type: "video/webm",
+                            });
+                            const url = URL.createObjectURL(blob);
+                            const a = document.createElement("a");
+                            a.download = `mooyvx-card-${Date.now()}.webm`;
+                            a.href = url;
+                            a.click();
+                            setTimeout(() => URL.revokeObjectURL(url), 100);
+
+                            document.body.removeChild(cloneContainer);
+                            resolve();
+                        };
+                    });
+
+                    // Start recording
+                    recorder.start();
+
+                    // Record for 5 seconds
+                    const duration = 5000;
+                    const startTime = Date.now();
+
+                    function drawFrame() {
+                        if (cancelCaptureFlag) {
+                            recorder.stop();
+                            return;
+                        }
+
+                        const elapsed = Date.now() - startTime;
+                        const progress = Math.min(
+                            (elapsed / duration) * 100,
+                            100,
+                        );
+                        showModal(
+                            "Recording Video",
+                            `Recording... ${Math.floor(progress)}%`,
+                            progress,
+                        );
+
+                        html2canvas(cardClone, {
+                            scale: 2,
+                            backgroundColor: "#FFFFFF",
+                            logging: false,
+                            useCORS: true,
+                        })
+                            .then((drawnCanvas) => {
+                                ctx.clearRect(
+                                    0,
+                                    0,
+                                    canvas.width,
+                                    canvas.height,
+                                );
+                                ctx.drawImage(
+                                    drawnCanvas,
+                                    0,
+                                    0,
+                                    canvas.width,
+                                    canvas.height,
+                                );
+
+                                if (elapsed < duration && !cancelCaptureFlag) {
+                                    requestAnimationFrame(drawFrame);
+                                } else {
+                                    recorder.stop();
+                                }
+                            })
+                            .catch((err) => {
+                                console.error("Frame capture error:", err);
+                                recorder.stop();
+                            });
+                    }
+
+                    drawFrame();
+                    await stopPromise;
                 } catch (error) {
-                    console.error("Failed to create GIF:", error);
-                    alert("Failed to create GIF. Please try again.");
+                    console.error("Recording failed:", error);
+                    alert("Recording failed. Please try again.");
                 } finally {
-                    // Restore UI
-                    if (buttons) buttons.style.opacity = "1";
-                    if (noiseOverlay) noiseOverlay.style.opacity = "0.4";
+                    hideModal();
+                    showButtons();
                     isCapturing = false;
                 }
             }
 
-            // Capture all cards as separate GIFs
-            async function captureAllCardsAsGIFs() {
+            // Capture all cards
+            async function captureAllCardsAsVideos() {
                 if (isCapturing) {
                     alert("Already capturing! Please wait.");
                     return;
                 }
 
                 isCapturing = true;
+                cancelCaptureFlag = false;
+                hideButtons();
 
                 const slides = document.querySelectorAll(".snap-center");
                 const totalCards = slides.length;
-
-                // Hide UI elements
-                const buttons = document.querySelector(".fixed.bottom-6");
-                const noiseOverlay = document.querySelector(
-                    ".fixed.inset-0.pointer-events-none",
-                );
-                if (buttons) buttons.style.opacity = "0";
-                if (noiseOverlay) noiseOverlay.style.opacity = "0";
-
-                // Store original scroll
-                const originalOverflow = document.body.style.overflow;
-                document.body.style.overflow = "hidden";
-
-                // Stop auto-rotation temporarily
-                let originalInterval = window.autoRotateInterval;
-                if (originalInterval) clearInterval(originalInterval);
-
-                for (let i = 0; i < totalCards; i++) {
-                    showProgress(`Card ${i + 1}/${totalCards}: Preparing...`);
-
-                    // Scroll to card
-                    slides[i].scrollIntoView({
-                        behavior: "instant",
-                        block: "start",
-                    });
-                    await new Promise((r) => setTimeout(r, 300));
-
-                    try {
-                        const gifBlob = await captureElementAsGIF(slides[i], {
-                            duration: 4000,
-                            fps: 24,
-                            quality: 8,
-                            backgroundColor: "#EAEAEA",
-                        });
-
-                        // Download GIF
-                        const url = URL.createObjectURL(gifBlob);
-                        const a = document.createElement("a");
-                        a.href = url;
-                        a.download = `mooyvx-card-${i + 1}-${Date.now()}.gif`;
-                        a.click();
-                        setTimeout(() => URL.revokeObjectURL(url), 100);
-
-                        await new Promise((r) => setTimeout(r, 500));
-                    } catch (error) {
-                        console.error(
-                            `Failed to capture card ${i + 1}:`,
-                            error,
-                        );
-                    }
-                }
-
-                // Restore everything
-                document.body.style.overflow = originalOverflow;
-                if (originalInterval && window.startAutoRotate) {
-                    window.startAutoRotate();
-                }
-                if (buttons) buttons.style.opacity = "1";
-                if (noiseOverlay) noiseOverlay.style.opacity = "0.4";
-
-                hideProgress();
-                isCapturing = false;
-                alert(
-                    `✨ Successfully captured ${totalCards} GIFs! Check your downloads folder.`,
-                );
-            }
-
-            // Special capture for stats card - captures all 3 rotating states
-            async function captureStatsCardStatesAsGIF() {
-                if (isCapturing) {
-                    alert("Already capturing! Please wait.");
-                    return;
-                }
-
-                isCapturing = true;
-
-                const statsSlide = document.querySelectorAll(".snap-center")[1];
-                if (!statsSlide) {
-                    isCapturing = false;
-                    alert("Stats card not found!");
-                    return;
-                }
-
-                // Hide UI
-                const buttons = document.querySelector(".fixed.bottom-6");
-                const noiseOverlay = document.querySelector(
-                    ".fixed.inset-0.pointer-events-none",
-                );
-                if (buttons) buttons.style.opacity = "0";
-                if (noiseOverlay) noiseOverlay.style.opacity = "0";
 
                 // Stop auto-rotation
                 let originalInterval = window.autoRotateInterval;
                 if (originalInterval) clearInterval(originalInterval);
 
-                // Get all three card states
+                for (let i = 0; i < totalCards; i++) {
+                    if (cancelCaptureFlag) break;
+
+                    showModal(
+                        "Capturing All Cards",
+                        `Processing card ${i + 1}/${totalCards}...`,
+                        (i / totalCards) * 100,
+                    );
+
+                    // Scroll to card
+                    slides[i].scrollIntoView({
+                        behavior: "instant",
+                        block: "center",
+                    });
+                    await new Promise((r) => setTimeout(r, 300));
+
+                    const cardContainer = slides[i].querySelector(
+                        ".rounded-\\[2rem\\]",
+                    );
+                    const rect = cardContainer.getBoundingClientRect();
+                    const width = rect.width;
+                    const height = rect.height;
+
+                    // Clone and capture
+                    const cloneContainer = document.createElement("div");
+                    cloneContainer.style.position = "fixed";
+                    cloneContainer.style.top = "-9999px";
+                    cloneContainer.style.left = "-9999px";
+                    cloneContainer.style.width = `${width}px`;
+                    cloneContainer.style.height = `${height}px`;
+
+                    const cardClone = cardContainer.cloneNode(true);
+                    cardClone.style.width = `${width}px`;
+                    cardClone.style.height = `${height}px`;
+                    cloneContainer.appendChild(cardClone);
+                    document.body.appendChild(cloneContainer);
+
+                    await new Promise((r) => setTimeout(r, 200));
+
+                    // Create canvas and recorder
+                    const canvas = document.createElement("canvas");
+                    canvas.width = width * 2;
+                    canvas.height = height * 2;
+                    const ctx = canvas.getContext("2d");
+
+                    const stream = canvas.captureStream(30);
+                    const recorder = new MediaRecorder(stream, {
+                        mimeType: "video/webm",
+                        videoBitsPerSecond: 8000000,
+                    });
+
+                    const chunks = [];
+                    recorder.ondataavailable = (e) => {
+                        if (e.data.size > 0) chunks.push(e.data);
+                    };
+
+                    // Record and save
+                    await new Promise((resolve) => {
+                        recorder.onstop = resolve;
+                        recorder.start();
+
+                        const startTime = Date.now();
+                        const duration = 4000;
+
+                        function drawFrame() {
+                            html2canvas(cardClone, {
+                                scale: 2,
+                                backgroundColor: "#FFFFFF",
+                                logging: false,
+                            }).then((drawnCanvas) => {
+                                ctx.clearRect(
+                                    0,
+                                    0,
+                                    canvas.width,
+                                    canvas.height,
+                                );
+                                ctx.drawImage(
+                                    drawnCanvas,
+                                    0,
+                                    0,
+                                    canvas.width,
+                                    canvas.height,
+                                );
+
+                                if (Date.now() - startTime < duration) {
+                                    requestAnimationFrame(drawFrame);
+                                } else {
+                                    recorder.stop();
+                                }
+                            });
+                        }
+
+                        drawFrame();
+                    });
+
+                    // Save video
+                    const blob = new Blob(chunks, { type: "video/webm" });
+                    const url = URL.createObjectURL(blob);
+                    const a = document.createElement("a");
+                    a.download = `mooyvx-card-${i + 1}-${Date.now()}.webm`;
+                    a.href = url;
+                    a.click();
+                    setTimeout(() => URL.revokeObjectURL(url), 100);
+
+                    document.body.removeChild(cloneContainer);
+                    await new Promise((r) => setTimeout(r, 500));
+                }
+
+                // Restore auto-rotation
+                if (originalInterval && window.startAutoRotate) {
+                    window.startAutoRotate();
+                }
+
+                hideModal();
+                showButtons();
+                isCapturing = false;
+
+                if (!cancelCaptureFlag) {
+                    alert(`✨ Successfully captured ${totalCards} cards!`);
+                }
+            }
+
+            // Capture stats card 3 states
+            async function captureStatsStates() {
+                if (isCapturing) {
+                    alert("Already capturing! Please wait.");
+                    return;
+                }
+
+                isCapturing = true;
+                cancelCaptureFlag = false;
+                hideButtons();
+
+                const statsSlide = document.querySelectorAll(".snap-center")[1];
+                if (!statsSlide) {
+                    isCapturing = false;
+                    showButtons();
+                    alert("Stats card not found!");
+                    return;
+                }
+
+                // Stop auto-rotation
+                let originalInterval = window.autoRotateInterval;
+                if (originalInterval) clearInterval(originalInterval);
+
+                // Scroll to stats card
+                statsSlide.scrollIntoView({
+                    behavior: "instant",
+                    block: "center",
+                });
+                await new Promise((r) => setTimeout(r, 300));
+
                 const cards = statsSlide.querySelectorAll(".rotate-card");
-                const stateNames = ["5.17B", "200M", "50M"];
+                const stateNames = [
+                    "5.17 Billion",
+                    "200 Million",
+                    "50 Million",
+                ];
 
                 for (let i = 0; i < cards.length; i++) {
-                    showProgress(`Capturing ${stateNames[i]} state...`);
+                    if (cancelCaptureFlag) break;
+
+                    showModal(
+                        "Capturing Stats",
+                        `Recording ${stateNames[i]}...`,
+                        (i / cards.length) * 100,
+                    );
 
                     // Show only this card state
                     cards.forEach((card, idx) => {
@@ -1730,28 +1806,97 @@
 
                     await new Promise((r) => setTimeout(r, 200));
 
-                    try {
-                        const gifBlob = await captureElementAsGIF(statsSlide, {
-                            duration: 3000,
-                            fps: 24,
-                            quality: 8,
-                            backgroundColor: "#EAEAEA",
-                        });
+                    // Capture this state
+                    const cardContainer = statsSlide.querySelector(
+                        ".rounded-\\[2rem\\]",
+                    );
+                    const rect = cardContainer.getBoundingClientRect();
+                    const width = rect.width;
+                    const height = rect.height;
 
-                        const url = URL.createObjectURL(gifBlob);
-                        const a = document.createElement("a");
-                        a.href = url;
-                        a.download = `mooyvx-stats-${stateNames[i]}-${Date.now()}.gif`;
-                        a.click();
-                        setTimeout(() => URL.revokeObjectURL(url), 100);
+                    // Clone and capture
+                    const cloneContainer = document.createElement("div");
+                    cloneContainer.style.position = "fixed";
+                    cloneContainer.style.top = "-9999px";
+                    cloneContainer.style.left = "-9999px";
+                    cloneContainer.style.width = `${width}px`;
+                    cloneContainer.style.height = `${height}px`;
 
-                        await new Promise((r) => setTimeout(r, 300));
-                    } catch (error) {
-                        console.error(
-                            `Failed to capture ${stateNames[i]}:`,
-                            error,
-                        );
-                    }
+                    const cardClone = cardContainer.cloneNode(true);
+                    cardClone.style.width = `${width}px`;
+                    cardClone.style.height = `${height}px`;
+                    cloneContainer.appendChild(cardClone);
+                    document.body.appendChild(cloneContainer);
+
+                    await new Promise((r) => setTimeout(r, 200));
+
+                    // Create canvas and recorder
+                    const canvas = document.createElement("canvas");
+                    canvas.width = width * 2;
+                    canvas.height = height * 2;
+                    const ctx = canvas.getContext("2d");
+
+                    const stream = canvas.captureStream(30);
+                    const recorder = new MediaRecorder(stream, {
+                        mimeType: "video/webm",
+                        videoBitsPerSecond: 8000000,
+                    });
+
+                    const chunks = [];
+                    recorder.ondataavailable = (e) => {
+                        if (e.data.size > 0) chunks.push(e.data);
+                    };
+
+                    // Record and save
+                    await new Promise((resolve) => {
+                        recorder.onstop = resolve;
+                        recorder.start();
+
+                        const startTime = Date.now();
+                        const duration = 3000;
+
+                        function drawFrame() {
+                            html2canvas(cardClone, {
+                                scale: 2,
+                                backgroundColor: "#FFFFFF",
+                                logging: false,
+                            }).then((drawnCanvas) => {
+                                ctx.clearRect(
+                                    0,
+                                    0,
+                                    canvas.width,
+                                    canvas.height,
+                                );
+                                ctx.drawImage(
+                                    drawnCanvas,
+                                    0,
+                                    0,
+                                    canvas.width,
+                                    canvas.height,
+                                );
+
+                                if (Date.now() - startTime < duration) {
+                                    requestAnimationFrame(drawFrame);
+                                } else {
+                                    recorder.stop();
+                                }
+                            });
+                        }
+
+                        drawFrame();
+                    });
+
+                    // Save video
+                    const blob = new Blob(chunks, { type: "video/webm" });
+                    const url = URL.createObjectURL(blob);
+                    const a = document.createElement("a");
+                    a.download = `mooyvx-stats-${stateNames[i].replace(/\s/g, "-")}-${Date.now()}.webm`;
+                    a.href = url;
+                    a.click();
+                    setTimeout(() => URL.revokeObjectURL(url), 100);
+
+                    document.body.removeChild(cloneContainer);
+                    await new Promise((r) => setTimeout(r, 500));
                 }
 
                 // Reset to first state
@@ -1784,13 +1929,13 @@
                     window.startAutoRotate();
                 }
 
-                // Restore UI
-                if (buttons) buttons.style.opacity = "1";
-                if (noiseOverlay) noiseOverlay.style.opacity = "0.4";
-
-                hideProgress();
+                hideModal();
+                showButtons();
                 isCapturing = false;
-                alert("✨ Captured all 3 stats card states as GIFs!");
+
+                if (!cancelCaptureFlag) {
+                    alert("✨ Captured all 3 stats card states as videos!");
+                }
             }
         </script>
     </body>
